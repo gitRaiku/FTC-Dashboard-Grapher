@@ -9,30 +9,55 @@ from matplotlib import style
 from collections import deque
 import time
 import math
-from random import random
+from random import random, uniform
 import os
 import sys
+from threading import Thread
 
 CLOSE = False
-TOUT = 10
-# var = ['x', 'y', 'xError', 'yError', 'heading (deg)']
-# var = ['CycleTime']
-# var = ['CT0', 'CT1', 'CT2', 'CT3', 'CT4', 'CT5', 'CT6', 'CT7', 'CT8']
-# var = ['CT5']
-# var = ['heading (deg)']
-var = ['ver', 'vel', 'vef']
-# var = ['EVl', 'EVr', 'EVf']
-# var = ['Che']
-# var = ['Ef', 'El', 'Er']
-# var = ['Ex', 'Ey', 'Eh']
-# var = ['xError'] # , 'yError']#, 'headingError (deg)']
-# var = ['vref', 'v0']
-# var = ['Current', 'Target']
-# var = ['Power']
-# var = ['measuredVelocity', 'targetVelocity']
+# TOUT = 1000
+TOUT = 5
+vrs = {'addYourValuesHere': ['Value1', 'Value2'],
+       'Option2': ['Value3', 'Value2']
+       }
+
+var = []
+spath = ''
+
+di = 0
+
+def print_vars():
+    for va in vrs:
+        print(f'"{va}": {vrs[va]}')
+
+try:
+    if len(sys.argv) >= 3:
+        if sys.argv[1] == 'graf':
+            spath = sys.argv[2]
+            print(f'Will save to {spath}')
+            di = 2
+        else:
+            print('Usage graf [graf] <graf name>')
+            print_vars()
+            exit(1)
+
+    if len(sys.argv) >= (2 + di):
+        if sys.argv[1 + di] == 'help':
+            print('Usage graf [graf] <graf name>')
+            print_vars()
+            exit(0)
+        var = vrs[sys.argv[1 + di]]
+        print(f'Getting {sys.argv[1 + di]}: {var}')
+    else:
+        print_vars()
+        exit(0)
+except KeyError as e:
+    print(f'Could not find {e} in vars!')
+    print_vars()
+    exit(1)
+
 x = []
 y = []
-bat = 0
 
 for i in var:
     x.append(deque())
@@ -92,17 +117,16 @@ async def plot_t():
             redr()
             await asyncio.sleep(0.01)
         except:
-            if len(sys.argv) < 2:
-                t = int(time.time()) - (int(time.time()) // 1000) * 1000
+            if spath != '':
                 try:
-                    print(f'Dumping to {t}.json')
-                    with open(f'{t}.json', 'w') as ff:
+                    print(f'Dumping to {spath}')
+                    with open(f'{spath}', 'w') as ff:
                         f = json.dumps({'vars': var, 'elemsx': fff(x), 'elemsy': fff(y)})
                         print(f, file=ff)
-                except:
+                except Exception as e:
                     try:
-                        print(f'Remove {t}.json')
-                        os.remove(f'{t}.json')
+                        print(f'Remove {spath}')
+                        os.remove(f'{spath}')
                     except Exception as e:
                         print(e)
                         pass
@@ -119,10 +143,20 @@ async def p1(wb):
                 await wb.send('{type: "GET_ROBOT_STATUS"}')
                 ct = gt()
             await asyncio.sleep(0.4)
-        except:
-            print('AAAAAAAA')
+        except Exception as e:
+            print(f'Error Send Get Robot Status {e}')
             CLOSE = True
     #print(f'2{CLOSE}')
+
+def tf(s):
+    if s == 'false':
+        return 0 + uniform(-0.1, 0.1)
+    elif s == 'true':
+        return 1 + uniform(-0.1, 0.1)
+    elif s == 'InitVal':
+        return 0
+    else:
+        return float(s)
 
 async def p2(wb):
     it = gt()
@@ -138,16 +172,16 @@ async def p2(wb):
                         x[i].popleft()
                         y[i].popleft()
 
-                # print(r)
                 if r['type'] == "RECEIVE_TELEMETRY":
+                    # print(r)
                     for tel in r['telemetry']:
                         for nm in tel['data']:
-                            if nm == 'bat':
-                                bat = int(tel['data'][var[var.index(nm)]])
-                                print(f'Battery {bat}')
+                            # if nm == 'bat':
+                                # bat = int(tel['data'][var[var.index(nm)]])
+                                # print(f'Battery {bat}')
                             if nm in var:
                                 idx = var.index(nm)
-                                x[idx].append(float(tel['data'][var[idx]]))
+                                x[idx].append(tf(tel['data'][var[idx]]))
                                 y[idx].append(tel['timestamp'] / 1000)
                                 # print(f'Got for {var[idx]}: {x[idx][-1]} at {y[idx][-1]}')
                             else:
@@ -155,7 +189,7 @@ async def p2(wb):
                                 # print(f'Could not find {nm}')
             await asyncio.sleep(0.0001)
         except Exception as e:
-            print("AAAAAAAA")
+            print(f'Error Recieve Telemetry {e}')
             CLOSE = True
 
 async def p3(wb):
@@ -165,7 +199,7 @@ async def p3(wb):
         #print(f'4{CLOSE}')
         try:
             a = input().split(' ')
-            print(a)
+            # print(a)
             if a[0] == 'run':
                 print(f'{{"type": "INIT_OP_MODE", "opModeName": "{b[int(a[1])]}"}}')
                 await wb.send(f'{{"type": "INIT_OP_MODE", "opModeName": "{b[int(a[1])]}"}}')
@@ -181,8 +215,8 @@ async def p3(wb):
             else:
                 print(f'Unknown command {a}!')
             await asyncio.sleep(0.0001)
-        except:
-            print("AAAAAAAA")
+        except Exception as e:
+            print(f'Error Start Op Mode {e}')
             CLOSE = True
 
 async def webs():
